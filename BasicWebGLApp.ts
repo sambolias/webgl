@@ -11,39 +11,8 @@
 
 //Most of this is from  class template
 //Loaded texture onto triangle to learn typescript with webGL
-/// <reference path = "./Libs/lib.ts"/>
-/// <reference path = "./Libs/Utils.ts"/>
-
-
-class StaticVertexBufferObject {
-    public buffer: WebGLBuffer | null = null;
-    private gl: WebGLRenderingContext | null = null;
-    private bufferLength: number = 0;
-    private count: number = 0;
-    constructor(gl: WebGLRenderingContext, private drawArraysMode: number, vertexData: Float32Array) {
-        this.buffer = gl.createBuffer();
-        if (!this.buffer)
-            return;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-        this.bufferLength = vertexData.length * 4;
-        this.count = vertexData.length / 4;
-        this.gl = gl;
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-
-    Render(vertexLoc: number): void {
-        if (!this.buffer || !this.gl || vertexLoc < 0)
-            return;
-        let gl = this.gl;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.vertexAttribPointer(vertexLoc, 4, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(vertexLoc);
-        gl.drawArrays(this.drawArraysMode, 0, this.count);
-        gl.disableVertexAttribArray(vertexLoc);
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-}
+// / <reference path = "./Libs/lib.ts"/>
+// / <reference path = "./Libs/Utils.ts"/>
 
 class ShaderProgram {
     public program_: WebGLProgram | null = null;
@@ -119,12 +88,12 @@ class BasicWebGLApp {
     private divElement_: HTMLDivElement | null = null;
     private canvasElement_: HTMLCanvasElement | null = null;
     private gl: WebGLRenderingContext | null = null;
-  //  private vbo: StaticVertexBufferObject | null = null;
     private vbo: OBJ.IndexedGeometryMatrix | null = null;
     private program: ShaderProgram;
     private image: HTMLImageElement;   
     private enabledExtensions: string[] = [];
-  //  private img: Util.ImageFileLoader;
+    private failed: boolean = false;
+   //private img: Util.ImageFileLoader;
 
 
     constructor(public width: number = 512, public height: number = 384) 
@@ -196,12 +165,6 @@ class BasicWebGLApp {
     }
 
     init(gl: WebGLRenderingContext): void {
-        // this.vbo = new StaticVertexBufferObject(gl, gl.TRIANGLES, new Float32Array([
-        //     -1, -1, 0, 1,
-        //     1, -1, 0, 1,
-        //     0, 1, 0, 1
-        // ]));
-
         //load shaders then init shader resources
         let tmp = new Utils.ShaderLoader("vertex.vert", "fragment.frag", 
                 (vert, frag) => {
@@ -216,7 +179,7 @@ class BasicWebGLApp {
                     () => { this.image = tmp.image; 
                             this.program.LoadTexture(this.image);
                         });
-        let tmp2 = new Utils.TextFileLoader(".\\assets\\models\\teapot.obj", 
+        let tmp2 = new Utils.TextFileLoader(".\\assets\\models\\bunny.obj", 
                     (data) => { 
                             if(this.gl)
                             {
@@ -230,27 +193,30 @@ class BasicWebGLApp {
         if (!this.gl || !this.canvasElement_) return;
         let gl = this.gl;
         gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(0., 0., 0., 1.);
+        gl.clearColor(0.96, 0.96, 0.96, 1.);
         gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
         gl.viewport(0, 0, this.canvasElement_.width, this.canvasElement_.height);
         if (this.vbo && this.program) 
         {
-            let mv =  Matrix4.makeIdentity();
-            mv = mv.Translate(0.,0.,-4.);
-            mv = mv.Rotate(t*100,0.,1.,0.);
+            let mv = Matrix4.makeIdentity();
+            mv = mv.Rotate(t*-10,0.,1.,0.);
+            mv = mv.Translate(0.,0.,-2.); //bunny
+            // mv = mv.Translate(0.,-0.9,-5.);   //teapot
+          
             this.program.Use();
             let mloc = gl.getUniformLocation(this.program.program_, "MvMatrix");
-            if(mloc && mloc >= 0)
+            if(mloc != -1)
+            {
                 gl.uniformMatrix4fv(mloc, false, mv.asColMajorArray());
-      //          else console.log("cant make mv");
+            }
+
             let ploc = gl.getUniformLocation(this.program.program_, "PMatrix");
-            if(ploc && ploc >= 0)
+            if(ploc != -1)
                 gl.uniformMatrix4fv(ploc, false, Matrix4.makePerspectiveX(45., 512./384., 0.1, 100.).asColMajorArray());
-        //        else console.log("cant make p");
-            this.vbo.Render(this.program);
-          //  if(gl.getError() != null) console.log(gl.getError());
+
+        this.vbo.Render(this.program);
         }
         gl.useProgram(null);
-    //    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
     }
 }

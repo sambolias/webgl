@@ -1,4 +1,204 @@
 "use strict";
+/*  BasicWebGLApp.ts
+ *  1/26/2018
+ *  Sam Erie
+ *  serie@alaska.edu
+ *
+ *  CS481
+ *  Homework0
+ *  Most of this is from  class template
+ *  Loaded texture onto triangle to learn typescript with webGL
+ */
+//Most of this is from  class template
+//Loaded texture onto triangle to learn typescript with webGL
+// / <reference path = "./Libs/lib.ts"/>
+// / <reference path = "./Libs/Utils.ts"/>
+class ShaderProgram {
+    constructor(gl, vertShaderSource, fragShaderSource) {
+        this.gl = gl;
+        this.vertShaderSource = vertShaderSource;
+        this.fragShaderSource = fragShaderSource;
+        this.program_ = null;
+        let vshader = this.createShader(gl.VERTEX_SHADER, vertShaderSource);
+        let fshader = this.createShader(gl.FRAGMENT_SHADER, fragShaderSource);
+        if (!vshader || !fshader)
+            return;
+        this.program_ = gl.createProgram();
+        if (!this.program_)
+            return;
+        gl.attachShader(this.program_, vshader);
+        gl.attachShader(this.program_, fshader);
+        gl.linkProgram(this.program_);
+        if (!gl.getProgramParameter(this.program_, gl.LINK_STATUS)) {
+            console.error("Program Link Error");
+            console.error(this.gl.getProgramInfoLog(this.program_));
+            gl.deleteShader(vshader);
+            gl.deleteShader(fshader);
+            gl.deleteProgram(this.program_);
+            this.program_ = null;
+            return;
+        }
+    }
+    Use() {
+        if (!this.program_)
+            return;
+        this.gl.useProgram(this.program_);
+    }
+    GetVertexPosition(vertexName) {
+        return this.gl.getAttribLocation(this.program_, vertexName);
+    }
+    //my load texture function
+    LoadTexture(image) {
+        let tex = this.gl.createTexture();
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
+        this.gl.generateMipmap(this.gl.TEXTURE_2D);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
+        this.Use();
+        let loc = this.gl.getUniformLocation(this.program_, 'tex');
+        if (loc != -1) {
+            this.gl.uniform1i(loc, 0);
+        }
+        this.gl.useProgram(null);
+    }
+    createShader(type, sourceCode) {
+        let shader = this.gl.createShader(type);
+        if (!shader)
+            return null;
+        this.gl.shaderSource(shader, sourceCode);
+        this.gl.compileShader(shader);
+        let status = this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS);
+        if (!status) {
+            if (type == this.gl.VERTEX_SHADER)
+                console.error("Vertex shader compile error");
+            if (type == this.gl.FRAGMENT_SHADER)
+                console.error("Fragment shader compile error");
+            console.error(this.gl.getShaderInfoLog(shader));
+            return null;
+        }
+        return shader;
+    }
+}
+class BasicWebGLApp {
+    //  private img: Util.ImageFileLoader;
+    constructor(width = 512, height = 384) {
+        this.width = width;
+        this.height = height;
+        this.divElement_ = null;
+        this.canvasElement_ = null;
+        this.gl = null;
+        this.vbo = null;
+        this.enabledExtensions = [];
+        this.failed = false;
+        this.divElement_ = document.createElement("div");
+        this.canvasElement_ = document.createElement("canvas");
+        if (this.canvasElement_) {
+            this.gl = this.canvasElement_.getContext("webgl");
+            if (!this.gl) {
+                this.gl = this.canvasElement_.getContext("experimental-webgl");
+            }
+            if (!this.gl) {
+                this.canvasElement_ = null;
+                this.divElement_.innerText = "WebGL not supported.";
+            }
+            else {
+                this.divElement_.appendChild(this.canvasElement_);
+                this.divElement_.align = "center";
+            }
+        }
+        document.body.appendChild(this.divElement_);
+        this.EnableExtensions([
+            "OES_standard_derivatives",
+            "WEBGL_depth_texture",
+            "OES_texture_float",
+            "OES_element_index_uint"
+        ]);
+    }
+    EnableExtensions(names) {
+        if (!this.gl)
+            return false;
+        let supportedExtensions = this.gl.getSupportedExtensions();
+        if (!supportedExtensions)
+            return false;
+        let allFound = true;
+        for (var name of names) {
+            let found = false;
+            for (var ext of supportedExtensions) {
+                if (name == ext) {
+                    this.enabledExtensions.push(this.gl.getExtension(name));
+                    console.log("Extension " + name + " enabled");
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                console.log("Extension " + name + " not enabled");
+                allFound = false;
+                break;
+            }
+        }
+        return allFound;
+    }
+    run() {
+        if (!this.gl)
+            return;
+        this.init(this.gl);
+        this.mainloop(0);
+    }
+    mainloop(timestamp) {
+        let self = this;
+        this.display(timestamp / 1000.0);
+        window.requestAnimationFrame((t) => {
+            self.mainloop(t);
+        });
+    }
+    init(gl) {
+        //load shaders then init shader resources
+        let tmp = new Utils.ShaderLoader("vertex.vert", "fragment.frag", (vert, frag) => {
+            this.program = new ShaderProgram(gl, vert, frag);
+            this.initResources();
+        });
+    }
+    initResources() {
+        let tmp = new Utils.ImageFileLoader(".\\assets\\images\\8012-diffuse.jpg", () => {
+            this.image = tmp.image;
+            this.program.LoadTexture(this.image);
+        });
+        let tmp2 = new Utils.TextFileLoader(".\\assets\\models\\bunny.obj", (data) => {
+            if (this.gl) {
+                this.vbo = OBJ.parseOBJ(data, this.gl.TRIANGLES);
+                this.vbo.Load(this.gl);
+            }
+        });
+    }
+    display(t) {
+        if (!this.gl || !this.canvasElement_)
+            return;
+        let gl = this.gl;
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(0.96, 0.96, 0.96, 1.);
+        gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+        gl.viewport(0, 0, this.canvasElement_.width, this.canvasElement_.height);
+        if (this.vbo && this.program) {
+            let mv = Matrix4.makeIdentity();
+            mv = mv.Rotate(t * -10, 0., 1., 0.);
+            mv = mv.Translate(0., 0., -2.); //bunny
+            // mv = mv.Translate(0.,-0.9,-5.);   //teapot
+            this.program.Use();
+            let mloc = gl.getUniformLocation(this.program.program_, "MvMatrix");
+            if (mloc != -1) {
+                gl.uniformMatrix4fv(mloc, false, mv.asColMajorArray());
+            }
+            let ploc = gl.getUniformLocation(this.program.program_, "PMatrix");
+            if (ploc != -1)
+                gl.uniformMatrix4fv(ploc, false, Matrix4.makePerspectiveX(45., 512. / 384., 0.1, 100.).asColMajorArray());
+            this.vbo.Render(this.program);
+        }
+        gl.useProgram(null);
+    }
+}
 // Fluxions WebGL Library
 // Copyright (c) 2017 - 2018 Jonathan Metzgar
 // All Rights Reserved.
@@ -99,6 +299,109 @@ class Vector2 {
             v.y /= len;
         }
         return v;
+    }
+}
+// Fluxions WebGL Library
+// Copyright (c) 2017 - 2018 Jonathan Metzgar
+// All Rights Reserved.
+//
+// MIT License
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+/// <reference path="./GTE.ts" />
+class Vector3 {
+    constructor(x = 0.0, y = 0.0, z = 0.0) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+    copy(v) {
+        this.x = v.x;
+        this.y = v.y;
+        this.z = v.z;
+        return this;
+    }
+    reset(x, y, z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        return this;
+    }
+    add(v) {
+        return new Vector3(this.x + v.x, this.y + v.y, this.z + v.z);
+    }
+    sub(v) {
+        return new Vector3(this.x - v.x, this.y - v.y, this.z - v.z);
+    }
+    mul(multiplicand) {
+        return new Vector3(this.x * multiplicand, this.y * multiplicand, this.z * multiplicand);
+    }
+    // returns 0 if denominator is 0
+    div(divisor) {
+        if (divisor == 0.0)
+            return new Vector3();
+        return new Vector3(this.x / divisor, this.y / divisor, this.z / divisor);
+    }
+    toFloat32Array() {
+        return new Float32Array([this.x, this.y, this.z]);
+    }
+    toVector2() {
+        return new Vector2(this.x, this.y);
+    }
+    toVector4(w) {
+        return new Vector4(this.x, this.y, this.z, w);
+    }
+    project() {
+        return new Vector2(this.x / this.z, this.y / this.z);
+    }
+    length() {
+        return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+    }
+    lengthSquared() {
+        return this.x * this.x + this.y * this.y + this.z * this.z;
+    }
+    norm() {
+        let len = this.lengthSquared();
+        if (len == 0.0)
+            return new Vector3();
+        else
+            len = Math.sqrt(len);
+        return new Vector3(this.x / len, this.y / len, this.z / len);
+    }
+    static dot(v1, v2) {
+        return v1.x * v2.x + v1.y * v2.y + v1.x * v2.y;
+    }
+    static cross(a, b) {
+        return new Vector3(a.y * b.z - b.y * a.z, a.z * b.x - b.z * a.x, a.x * b.y - b.x * a.y);
+    }
+    static add(a, b) {
+        return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
+    }
+    static sub(a, b) {
+        return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
+    }
+    static mul(a, b) {
+        return new Vector3(a.x * b.x, a.y * b.y, a.z * b.z);
+    }
+    static div(a, b) {
+        return new Vector3(a.x / b.x, a.y / b.y, a.z / b.z);
     }
 }
 // Fluxions WebGL Library
@@ -1415,87 +1718,73 @@ var GTE;
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-/// <reference path="./GTE.ts" />
-class Vector3 {
-    constructor(x = 0.0, y = 0.0, z = 0.0) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-    }
-    copy(v) {
-        this.x = v.x;
-        this.y = v.y;
-        this.z = v.z;
-        return this;
-    }
-    reset(x, y, z) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        return this;
-    }
-    add(v) {
-        return new Vector3(this.x + v.x, this.y + v.y, this.z + v.z);
-    }
-    sub(v) {
-        return new Vector3(this.x - v.x, this.y - v.y, this.z - v.z);
-    }
-    mul(multiplicand) {
-        return new Vector3(this.x * multiplicand, this.y * multiplicand, this.z * multiplicand);
-    }
-    // returns 0 if denominator is 0
-    div(divisor) {
-        if (divisor == 0.0)
-            return new Vector3();
-        return new Vector3(this.x / divisor, this.y / divisor, this.z / divisor);
-    }
-    toFloat32Array() {
-        return new Float32Array([this.x, this.y, this.z]);
-    }
-    toVector2() {
-        return new Vector2(this.x, this.y);
-    }
-    toVector4(w) {
-        return new Vector4(this.x, this.y, this.z, w);
-    }
-    project() {
-        return new Vector2(this.x / this.z, this.y / this.z);
-    }
-    length() {
-        return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
-    }
-    lengthSquared() {
-        return this.x * this.x + this.y * this.y + this.z * this.z;
-    }
-    norm() {
-        let len = this.lengthSquared();
-        if (len == 0.0)
-            return new Vector3();
-        else
-            len = Math.sqrt(len);
-        return new Vector3(this.x / len, this.y / len, this.z / len);
-    }
-    static dot(v1, v2) {
-        return v1.x * v2.x + v1.y * v2.y + v1.x * v2.y;
-    }
-    static cross(a, b) {
-        return new Vector3(a.y * b.z - b.y * a.z, a.z * b.x - b.z * a.x, a.x * b.y - b.x * a.y);
-    }
-    static add(a, b) {
-        return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
-    }
-    static sub(a, b) {
-        return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
-    }
-    static mul(a, b) {
-        return new Vector3(a.x * b.x, a.y * b.y, a.z * b.z);
-    }
-    static div(a, b) {
-        return new Vector3(a.x / b.x, a.y / b.y, a.z / b.z);
-    }
-}
-/// <reference path = "../BasicWebGLApp.ts"/>
-/// <reference path = "./Vector3.ts"/>
+/// <reference path="GTE.ts" />
+var Colors;
+(function (Colors) {
+    const DarkIntensity = 30;
+    const LightIntensity = 210;
+    const MediumIntensity = GTE.lerp(DarkIntensity, LightIntensity, 0.5);
+    const GrayIntensity33 = GTE.lerp(DarkIntensity, LightIntensity, 0.66);
+    const GrayIntensity66 = GTE.lerp(DarkIntensity, LightIntensity, 0.33);
+    const Gr33Intensity = GTE.lerp(DarkIntensity, LightIntensity, 0.66);
+    const Gr66Intensity = GTE.lerp(DarkIntensity, LightIntensity, 0.33);
+    Colors.Black = [30, 30, 30, 255];
+    Colors.White = [210, 210, 210, 255];
+    Colors.Gray66 = [150, 150, 150, 255];
+    Colors.Gray33 = [91, 91, 91, 255];
+    Colors.Red = [210, 30, 30, 255];
+    Colors.Orange = [210, 150, 30, 255];
+    Colors.Yellow = [210, 210, 30, 255];
+    Colors.Green = [30, 210, 30, 255];
+    Colors.Cyan = [30, 210, 210, 255];
+    Colors.Blue = [30, 30, 210, 255];
+    Colors.Indigo = [91, 30, 210, 255];
+    Colors.Violet = [150, 30, 150, 255];
+    Colors.Magenta = [210, 30, 210, 255];
+    // export const DarkGreen: number[] = [30, 91, 30, 255];
+    Colors.Brown = [150, 91, 30, 255];
+    Colors.SkyBlue = [30, 150, 210, 255];
+    Colors.DarkRed = [120, 30, 30, 255];
+    Colors.DarkCyan = [30, 120, 120, 255];
+    Colors.DarkGreen = [30, 120, 30, 255];
+    Colors.DarkMagenta = [120, 30, 120, 255];
+    Colors.DarkBlue = [30, 30, 120, 255];
+    Colors.DarkYellow = [120, 120, 30, 255];
+    Colors.LightRed = [210, 120, 120, 255];
+    Colors.LightCyan = [120, 210, 210, 255];
+    Colors.LightGreen = [120, 210, 120, 255];
+    Colors.LightMagenta = [210, 120, 210, 255];
+    Colors.LightBlue = [120, 120, 210, 255];
+    Colors.LightYellow = [210, 210, 120, 255];
+    Colors.ArneOrange = [235, 137, 49, 255];
+    Colors.ArneYellow = [247, 226, 107, 255];
+    Colors.ArneDarkGreen = [47, 72, 78, 255];
+    Colors.ArneGreen = [68, 137, 26, 255];
+    Colors.ArneSlimeGreen = [163, 206, 39, 255];
+    Colors.ArneNightBlue = [27, 38, 50, 255];
+    Colors.ArneSeaBlue = [0, 87, 132, 255];
+    Colors.ArneSkyBlue = [49, 162, 242, 255];
+    Colors.ArneCloudBlue = [178, 220, 239, 255];
+    Colors.ArneDarkBlue = [52, 42, 151, 255];
+    Colors.ArneDarkGray = [101, 109, 113, 255];
+    Colors.ArneLightGray = [204, 204, 204, 255];
+    Colors.ArneDarkRed = [115, 41, 48, 255];
+    Colors.ArneRose = [203, 67, 167, 255];
+    Colors.ArneTaupe = [82, 79, 64, 255];
+    Colors.ArneGold = [173, 157, 51, 255];
+    Colors.ArneTangerine = [236, 71, 0, 255];
+    Colors.ArneHoney = [250, 180, 11, 255];
+    Colors.ArneMossyGreen = [17, 94, 51, 255];
+    Colors.ArneDarkCyan = [20, 128, 126, 255];
+    Colors.ArneCyan = [21, 194, 165, 255];
+    Colors.ArneBlue = [34, 90, 246, 255];
+    Colors.ArneIndigo = [153, 100, 249, 255];
+    Colors.ArnePink = [247, 142, 214, 255];
+    Colors.ArneSkin = [244, 185, 144, 255];
+    Colors.ArneBlack = [30, 30, 30, 255];
+})(Colors || (Colors = {}));
+// / <reference path = "../BasicWebGLApp.ts"/>
+// / <reference path = "./Vector3.ts"/>
 var OBJ;
 (function (OBJ) {
     class Parser {
@@ -1583,6 +1872,7 @@ var OBJ;
             this.vertices = [];
             this.indices = [];
             this.surfaces = [];
+            this.failed = false;
             this.vertbuffer = null;
             this.eltbuffer = null;
             this.gl = null;
@@ -1630,43 +1920,42 @@ var OBJ;
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
             console.log("buffers loaded");
+            console.log("GL ERROR: " + gl.getError());
         }
         Render(shader) {
             if (!this.vertbuffer || !this.eltbuffer || !this.gl || !shader.program_)
                 return;
+            let checkfail = this.failed;
+            let failstring = "";
             let gl = this.gl;
             //bind buffers
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertbuffer);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.eltbuffer);
             //set up attributes
             let vloc = gl.getAttribLocation(shader.program_, "aPos");
-            if (vloc >= 0) {
+            if (vloc != -1) {
                 gl.vertexAttribPointer(vloc, 3, gl.FLOAT, false, 48, 0);
                 gl.enableVertexAttribArray(vloc);
             }
-            else
-                console.log("cant make aPos");
+            else {
+                failstring = "cant make aPos" + gl.getError();
+                this.failed = true;
+            }
             let nloc = gl.getAttribLocation(shader.program_, "aNorm");
-            if (nloc >= 0) {
+            if (nloc != -1) {
                 gl.vertexAttribPointer(nloc, 3, gl.FLOAT, false, 48, 12);
                 gl.enableVertexAttribArray(nloc);
             }
-            else
-                console.log("cant make aNorm");
             let tloc = gl.getAttribLocation(shader.program_, "aTexCoord");
-            if (tloc >= 0) {
+            if (tloc != -1) {
                 gl.vertexAttribPointer(tloc, 3, gl.FLOAT, false, 48, 24);
                 gl.enableVertexAttribArray(tloc);
             }
-            else
-                console.log("cant make aTex");
             let cloc = gl.getAttribLocation(shader.program_, "aColor");
-            if (cloc >= 0) {
+            if (cloc != -1) {
                 gl.vertexAttribPointer(cloc, 3, gl.FLOAT, false, 48, 36);
                 gl.enableVertexAttribArray(cloc);
             }
-            else
-                console.log("cant make aColor");
             //draw
             gl.drawElements(this.drawMode, this.indices.length, gl.UNSIGNED_INT, 0);
             //pop attribute/buffer stack
@@ -1680,6 +1969,8 @@ var OBJ;
                 gl.disableVertexAttribArray(cloc);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+            if (!checkfail && this.failed)
+                console.log(failstring);
         }
         set mtllib(mtllib) { this._mtllib = mtllib; }
         set mtl(mtl) { this._mtl = mtl; }
@@ -1770,8 +2061,8 @@ var OBJ;
                             console.log(vertices.length);
                             console.log(normals.length);
                         }
+                        vbo.AddIndex(-1);
                     }
-                    vbo.AddIndex(-1);
                 }
             }
         }
@@ -1780,328 +2071,3 @@ var OBJ;
     }
     OBJ.parseOBJ = parseOBJ;
 })(OBJ || (OBJ = {}));
-/*  BasicWebGLApp.ts
- *  1/26/2018
- *  Sam Erie
- *  serie@alaska.edu
- *
- *  CS481
- *  Homework0
- *  Most of this is from  class template
- *  Loaded texture onto triangle to learn typescript with webGL
- */
-//Most of this is from  class template
-//Loaded texture onto triangle to learn typescript with webGL
-/// <reference path = "./Libs/lib.ts"/>
-/// <reference path = "./Libs/Utils.ts"/>
-class StaticVertexBufferObject {
-    constructor(gl, drawArraysMode, vertexData) {
-        this.drawArraysMode = drawArraysMode;
-        this.buffer = null;
-        this.gl = null;
-        this.bufferLength = 0;
-        this.count = 0;
-        this.buffer = gl.createBuffer();
-        if (!this.buffer)
-            return;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-        this.bufferLength = vertexData.length * 4;
-        this.count = vertexData.length / 4;
-        this.gl = gl;
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-    Render(vertexLoc) {
-        if (!this.buffer || !this.gl || vertexLoc < 0)
-            return;
-        let gl = this.gl;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-        gl.vertexAttribPointer(vertexLoc, 4, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(vertexLoc);
-        gl.drawArrays(this.drawArraysMode, 0, this.count);
-        gl.disableVertexAttribArray(vertexLoc);
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-}
-class ShaderProgram {
-    constructor(gl, vertShaderSource, fragShaderSource) {
-        this.gl = gl;
-        this.vertShaderSource = vertShaderSource;
-        this.fragShaderSource = fragShaderSource;
-        this.program_ = null;
-        let vshader = this.createShader(gl.VERTEX_SHADER, vertShaderSource);
-        let fshader = this.createShader(gl.FRAGMENT_SHADER, fragShaderSource);
-        if (!vshader || !fshader)
-            return;
-        this.program_ = gl.createProgram();
-        if (!this.program_)
-            return;
-        gl.attachShader(this.program_, vshader);
-        gl.attachShader(this.program_, fshader);
-        gl.linkProgram(this.program_);
-        if (!gl.getProgramParameter(this.program_, gl.LINK_STATUS)) {
-            console.error("Program Link Error");
-            console.error(this.gl.getProgramInfoLog(this.program_));
-            gl.deleteShader(vshader);
-            gl.deleteShader(fshader);
-            gl.deleteProgram(this.program_);
-            this.program_ = null;
-            return;
-        }
-    }
-    Use() {
-        if (!this.program_)
-            return;
-        this.gl.useProgram(this.program_);
-    }
-    GetVertexPosition(vertexName) {
-        return this.gl.getAttribLocation(this.program_, vertexName);
-    }
-    //my load texture function
-    LoadTexture(image) {
-        let tex = this.gl.createTexture();
-        this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, image);
-        this.gl.generateMipmap(this.gl.TEXTURE_2D);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR_MIPMAP_LINEAR);
-        this.Use();
-        let loc = this.gl.getUniformLocation(this.program_, 'tex');
-        if (loc != -1) {
-            this.gl.uniform1i(loc, 0);
-        }
-        this.gl.useProgram(null);
-    }
-    createShader(type, sourceCode) {
-        let shader = this.gl.createShader(type);
-        if (!shader)
-            return null;
-        this.gl.shaderSource(shader, sourceCode);
-        this.gl.compileShader(shader);
-        let status = this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS);
-        if (!status) {
-            if (type == this.gl.VERTEX_SHADER)
-                console.error("Vertex shader compile error");
-            if (type == this.gl.FRAGMENT_SHADER)
-                console.error("Fragment shader compile error");
-            console.error(this.gl.getShaderInfoLog(shader));
-            return null;
-        }
-        return shader;
-    }
-}
-class BasicWebGLApp {
-    //  private img: Util.ImageFileLoader;
-    constructor(width = 512, height = 384) {
-        this.width = width;
-        this.height = height;
-        this.divElement_ = null;
-        this.canvasElement_ = null;
-        this.gl = null;
-        //  private vbo: StaticVertexBufferObject | null = null;
-        this.vbo = null;
-        this.enabledExtensions = [];
-        this.divElement_ = document.createElement("div");
-        this.canvasElement_ = document.createElement("canvas");
-        if (this.canvasElement_) {
-            this.gl = this.canvasElement_.getContext("webgl");
-            if (!this.gl) {
-                this.gl = this.canvasElement_.getContext("experimental-webgl");
-            }
-            if (!this.gl) {
-                this.canvasElement_ = null;
-                this.divElement_.innerText = "WebGL not supported.";
-            }
-            else {
-                this.divElement_.appendChild(this.canvasElement_);
-                this.divElement_.align = "center";
-            }
-        }
-        document.body.appendChild(this.divElement_);
-        this.EnableExtensions([
-            "OES_standard_derivatives",
-            "WEBGL_depth_texture",
-            "OES_texture_float",
-            "OES_element_index_uint"
-        ]);
-    }
-    EnableExtensions(names) {
-        if (!this.gl)
-            return false;
-        let supportedExtensions = this.gl.getSupportedExtensions();
-        if (!supportedExtensions)
-            return false;
-        let allFound = true;
-        for (var name of names) {
-            let found = false;
-            for (var ext of supportedExtensions) {
-                if (name == ext) {
-                    this.enabledExtensions.push(this.gl.getExtension(name));
-                    console.log("Extension " + name + " enabled");
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                console.log("Extension " + name + " not enabled");
-                allFound = false;
-                break;
-            }
-        }
-        return allFound;
-    }
-    run() {
-        if (!this.gl)
-            return;
-        this.init(this.gl);
-        this.mainloop(0);
-    }
-    mainloop(timestamp) {
-        let self = this;
-        this.display(timestamp / 1000.0);
-        window.requestAnimationFrame((t) => {
-            self.mainloop(t);
-        });
-    }
-    init(gl) {
-        // this.vbo = new StaticVertexBufferObject(gl, gl.TRIANGLES, new Float32Array([
-        //     -1, -1, 0, 1,
-        //     1, -1, 0, 1,
-        //     0, 1, 0, 1
-        // ]));
-        //load shaders then init shader resources
-        let tmp = new Utils.ShaderLoader("vertex.vert", "fragment.frag", (vert, frag) => {
-            this.program = new ShaderProgram(gl, vert, frag);
-            this.initResources();
-        });
-    }
-    initResources() {
-        let tmp = new Utils.ImageFileLoader(".\\assets\\images\\8012-diffuse.jpg", () => {
-            this.image = tmp.image;
-            this.program.LoadTexture(this.image);
-        });
-        let tmp2 = new Utils.TextFileLoader(".\\assets\\models\\teapot.obj", (data) => {
-            if (this.gl) {
-                this.vbo = OBJ.parseOBJ(data, this.gl.TRIANGLES);
-                this.vbo.Load(this.gl);
-            }
-        });
-    }
-    display(t) {
-        if (!this.gl || !this.canvasElement_)
-            return;
-        let gl = this.gl;
-        gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(0., 0., 0., 1.);
-        gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-        gl.viewport(0, 0, this.canvasElement_.width, this.canvasElement_.height);
-        if (this.vbo && this.program) {
-            let mv = Matrix4.makeIdentity();
-            mv = mv.Translate(0., 0., -4.);
-            mv = mv.Rotate(t * 100, 0., 1., 0.);
-            this.program.Use();
-            let mloc = gl.getUniformLocation(this.program.program_, "MvMatrix");
-            if (mloc && mloc >= 0)
-                gl.uniformMatrix4fv(mloc, false, mv.asColMajorArray());
-            //          else console.log("cant make mv");
-            let ploc = gl.getUniformLocation(this.program.program_, "PMatrix");
-            if (ploc && ploc >= 0)
-                gl.uniformMatrix4fv(ploc, false, Matrix4.makePerspectiveX(45., 512. / 384., 0.1, 100.).asColMajorArray());
-            //        else console.log("cant make p");
-            this.vbo.Render(this.program);
-            //  if(gl.getError() != null) console.log(gl.getError());
-        }
-        gl.useProgram(null);
-        //    gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-}
-// Fluxions WebGL Library
-// Copyright (c) 2017 - 2018 Jonathan Metzgar
-// All Rights Reserved.
-//
-// MIT License
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-//
-/// <reference path="GTE.ts" />
-var Colors;
-(function (Colors) {
-    const DarkIntensity = 30;
-    const LightIntensity = 210;
-    const MediumIntensity = GTE.lerp(DarkIntensity, LightIntensity, 0.5);
-    const GrayIntensity33 = GTE.lerp(DarkIntensity, LightIntensity, 0.66);
-    const GrayIntensity66 = GTE.lerp(DarkIntensity, LightIntensity, 0.33);
-    const Gr33Intensity = GTE.lerp(DarkIntensity, LightIntensity, 0.66);
-    const Gr66Intensity = GTE.lerp(DarkIntensity, LightIntensity, 0.33);
-    Colors.Black = [30, 30, 30, 255];
-    Colors.White = [210, 210, 210, 255];
-    Colors.Gray66 = [150, 150, 150, 255];
-    Colors.Gray33 = [91, 91, 91, 255];
-    Colors.Red = [210, 30, 30, 255];
-    Colors.Orange = [210, 150, 30, 255];
-    Colors.Yellow = [210, 210, 30, 255];
-    Colors.Green = [30, 210, 30, 255];
-    Colors.Cyan = [30, 210, 210, 255];
-    Colors.Blue = [30, 30, 210, 255];
-    Colors.Indigo = [91, 30, 210, 255];
-    Colors.Violet = [150, 30, 150, 255];
-    Colors.Magenta = [210, 30, 210, 255];
-    // export const DarkGreen: number[] = [30, 91, 30, 255];
-    Colors.Brown = [150, 91, 30, 255];
-    Colors.SkyBlue = [30, 150, 210, 255];
-    Colors.DarkRed = [120, 30, 30, 255];
-    Colors.DarkCyan = [30, 120, 120, 255];
-    Colors.DarkGreen = [30, 120, 30, 255];
-    Colors.DarkMagenta = [120, 30, 120, 255];
-    Colors.DarkBlue = [30, 30, 120, 255];
-    Colors.DarkYellow = [120, 120, 30, 255];
-    Colors.LightRed = [210, 120, 120, 255];
-    Colors.LightCyan = [120, 210, 210, 255];
-    Colors.LightGreen = [120, 210, 120, 255];
-    Colors.LightMagenta = [210, 120, 210, 255];
-    Colors.LightBlue = [120, 120, 210, 255];
-    Colors.LightYellow = [210, 210, 120, 255];
-    Colors.ArneOrange = [235, 137, 49, 255];
-    Colors.ArneYellow = [247, 226, 107, 255];
-    Colors.ArneDarkGreen = [47, 72, 78, 255];
-    Colors.ArneGreen = [68, 137, 26, 255];
-    Colors.ArneSlimeGreen = [163, 206, 39, 255];
-    Colors.ArneNightBlue = [27, 38, 50, 255];
-    Colors.ArneSeaBlue = [0, 87, 132, 255];
-    Colors.ArneSkyBlue = [49, 162, 242, 255];
-    Colors.ArneCloudBlue = [178, 220, 239, 255];
-    Colors.ArneDarkBlue = [52, 42, 151, 255];
-    Colors.ArneDarkGray = [101, 109, 113, 255];
-    Colors.ArneLightGray = [204, 204, 204, 255];
-    Colors.ArneDarkRed = [115, 41, 48, 255];
-    Colors.ArneRose = [203, 67, 167, 255];
-    Colors.ArneTaupe = [82, 79, 64, 255];
-    Colors.ArneGold = [173, 157, 51, 255];
-    Colors.ArneTangerine = [236, 71, 0, 255];
-    Colors.ArneHoney = [250, 180, 11, 255];
-    Colors.ArneMossyGreen = [17, 94, 51, 255];
-    Colors.ArneDarkCyan = [20, 128, 126, 255];
-    Colors.ArneCyan = [21, 194, 165, 255];
-    Colors.ArneBlue = [34, 90, 246, 255];
-    Colors.ArneIndigo = [153, 100, 249, 255];
-    Colors.ArnePink = [247, 142, 214, 255];
-    Colors.ArneSkin = [244, 185, 144, 255];
-    Colors.ArneBlack = [30, 30, 30, 255];
-})(Colors || (Colors = {}));
